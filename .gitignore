@@ -1,0 +1,13 @@
+# CMake build output
+/build/
+/build-*/
+
+# Editor settings
+/.idea/
+/.vscode/
+
+# Runtime and Python-generated files
+*.log
+*.csv
+__pycache__/
+*.py[cod]
