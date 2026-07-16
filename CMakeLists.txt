@@ -12,6 +12,7 @@ find_package(OpenCV REQUIRED COMPONENTS
     imgproc
     highgui
     videoio
+    calib3d
 )
 
 add_library(autonomy
@@ -19,6 +20,7 @@ add_library(autonomy
     src/vehicle_model.cpp
     src/scene_renderer.cpp
     src/lane_detector.cpp
+    src/lane_tracker.cpp
     src/stanley_controller.cpp
     src/q_learning_controller.cpp
     src/fault_injector.cpp
@@ -47,6 +49,9 @@ target_compile_options(autonomy
 
 add_executable(run_stack apps/run_stack.cpp)
 target_link_libraries(run_stack PRIVATE autonomy)
+
+add_executable(run_video apps/run_video.cpp)
+target_link_libraries(run_video PRIVATE autonomy)
 
 add_executable(replay_controller apps/replay_controller.cpp)
 target_link_libraries(replay_controller PRIVATE autonomy)

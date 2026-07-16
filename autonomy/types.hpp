@@ -15,6 +15,12 @@ struct VehicleState {
     double steering_rad{0.0};
 };
 
+struct LanePolynomial {
+    double a{0.0};
+    double b{0.0};
+    double c{0.0};
+};
+
 struct LaneObservation {
     bool valid{false};
     bool left_detected{false};
@@ -25,6 +31,16 @@ struct LaneObservation {
     double confidence{0.0};
 
     double processing_time_ms{0.0};
+
+    // Camera-space points.
+    double left_bottom_x{0.0};
+    double right_bottom_x{0.0};
+    double left_lookahead_x{0.0};
+    double right_lookahead_x{0.0};
+
+    // Bird's-eye polynomial coefficients.
+    LanePolynomial left_curve{};
+    LanePolynomial right_curve{};
 };
 
 struct ControlCommand {
