@@ -44,7 +44,9 @@ LaneTracker::LaneTracker(LaneTrackerConfig config)
         config_.warped_bottom_y_px <= config_.warped_lookahead_y_px ||
         config_.maximum_missed_frames < 0 ||
         config_.confidence_decay <= 0.0 ||
-        config_.confidence_decay > 1.0) {
+        config_.confidence_decay > 1.0 ||
+        config_.maximum_absolute_lateral_error_m <= 0.0 ||
+        config_.maximum_absolute_heading_error_rad <= 0.0) {
         throw std::invalid_argument(
             "Invalid lane tracker configuration"
         );
@@ -74,11 +76,14 @@ LaneObservation LaneTracker::update(
 
             LaneObservation invalid = candidate;
             invalid.valid = false;
+            invalid.fresh = false;
             invalid.confidence = 0.0;
             return invalid;
         }
 
         LaneObservation held = previous_;
+
+        held.fresh = false;
 
         held.left_detected = candidate.left_detected;
         held.right_detected = candidate.right_detected;
@@ -102,6 +107,8 @@ LaneObservation LaneTracker::update(
     if (!initialized_) {
         previous_ = candidate;
         recalculateErrors(previous_);
+
+        previous_.fresh = true;
 
         initialized_ = true;
         return previous_;
@@ -185,6 +192,8 @@ LaneObservation LaneTracker::update(
 
     recalculateErrors(filtered);
 
+    filtered.fresh = true;
+
     previous_ = filtered;
     return filtered;
 }
@@ -192,51 +201,166 @@ LaneObservation LaneTracker::update(
 bool LaneTracker::isAcceptable(
     const LaneObservation& detection
 ) const noexcept {
-    if (!detection.valid ||
+    if (
+        !detection.valid ||
         !detection.left_detected ||
         !detection.right_detected ||
-        !isFiniteGeometry(detection)) {
+        !isFiniteGeometry(detection)
+    ) {
         return false;
     }
 
-    if (detection.left_bottom_x >= detection.right_bottom_x ||
+    if (
+        detection.left_bottom_x >=
+            detection.right_bottom_x ||
         detection.left_lookahead_x >=
-            detection.right_lookahead_x) {
+            detection.right_lookahead_x
+    ) {
         return false;
     }
 
+    const auto xAt = [](
+        const LanePolynomial& curve,
+        const double y
+    ) {
+        return
+            curve.a * y * y +
+            curve.b * y +
+            curve.c;
+    };
+
+    /*
+     * Perform intrinsic geometry checks even before the
+     * tracker has a previous observation. Previously, the
+     * first valid-looking detection bypassed these checks.
+     */
+    for (
+        const double y :
+        {240.0, 300.0, 360.0, 420.0, 479.0}
+    ) {
+        const double left_x =
+            xAt(detection.left_curve, y);
+
+        const double right_x =
+            xAt(detection.right_curve, y);
+
+        const double lane_width =
+            right_x - left_x;
+
+        if (
+            !std::isfinite(left_x) ||
+            !std::isfinite(right_x) ||
+            left_x >= right_x ||
+            lane_width < 170.0 ||
+            lane_width > 450.0
+        ) {
+            return false;
+        }
+    }
+
+    const double bottom_y =
+        static_cast<double>(
+            config_.warped_bottom_y_px
+        );
+
+    const double lookahead_y =
+        static_cast<double>(
+            config_.warped_lookahead_y_px
+        );
+
+    const double left_bottom_x =
+        xAt(detection.left_curve, bottom_y);
+
+    const double right_bottom_x =
+        xAt(detection.right_curve, bottom_y);
+
+    const double left_lookahead_x =
+        xAt(detection.left_curve, lookahead_y);
+
+    const double right_lookahead_x =
+        xAt(detection.right_curve, lookahead_y);
+
+    const double lane_centre_bottom =
+        0.5 *
+        (
+            left_bottom_x +
+            right_bottom_x
+        );
+
+    const double lane_centre_lookahead =
+        0.5 *
+        (
+            left_lookahead_x +
+            right_lookahead_x
+        );
+
+    const double lateral_error_m =
+        (
+            config_.warped_vehicle_centre_x -
+            lane_centre_bottom
+        ) /
+        config_.warped_pixels_per_metre;
+
+    const double heading_error_rad =
+        std::atan2(
+            lane_centre_bottom -
+                lane_centre_lookahead,
+            bottom_y - lookahead_y
+        );
+
+    if (
+        !std::isfinite(lateral_error_m) ||
+        !std::isfinite(heading_error_rad) ||
+        std::abs(lateral_error_m) >
+            config_.maximum_absolute_lateral_error_m ||
+        std::abs(heading_error_rad) >
+            config_.maximum_absolute_heading_error_rad
+    ) {
+        return false;
+    }
+
+    /*
+     * The checks below require a previous accepted
+     * observation.
+     */
     if (!initialized_) {
         return true;
     }
 
-    const double left_bottom_jump = std::abs(
-        detection.left_bottom_x -
-        previous_.left_bottom_x
-    );
+    const double left_bottom_jump =
+        std::abs(
+            detection.left_bottom_x -
+            previous_.left_bottom_x
+        );
 
-    const double right_bottom_jump = std::abs(
-        detection.right_bottom_x -
-        previous_.right_bottom_x
-    );
+    const double right_bottom_jump =
+        std::abs(
+            detection.right_bottom_x -
+            previous_.right_bottom_x
+        );
 
-    const double left_lookahead_jump = std::abs(
-        detection.left_lookahead_x -
-        previous_.left_lookahead_x
-    );
+    const double left_lookahead_jump =
+        std::abs(
+            detection.left_lookahead_x -
+            previous_.left_lookahead_x
+        );
 
-    const double right_lookahead_jump = std::abs(
-        detection.right_lookahead_x -
-        previous_.right_lookahead_x
-    );
+    const double right_lookahead_jump =
+        std::abs(
+            detection.right_lookahead_x -
+            previous_.right_lookahead_x
+        );
 
-    if (left_bottom_jump >
+    if (
+        left_bottom_jump >
             config_.maximum_boundary_jump_px ||
         right_bottom_jump >
             config_.maximum_boundary_jump_px ||
         left_lookahead_jump >
             config_.maximum_boundary_jump_px ||
         right_lookahead_jump >
-            config_.maximum_boundary_jump_px) {
+            config_.maximum_boundary_jump_px
+    ) {
         return false;
     }
 
@@ -248,26 +372,9 @@ bool LaneTracker::isAcceptable(
         previous_.right_bottom_x -
         previous_.left_bottom_x;
 
-    for (const double y : {240.0, 300.0, 360.0, 420.0, 479.0}) {
-        const double left_x =
-            detection.left_curve.a * y * y +
-            detection.left_curve.b * y +
-            detection.left_curve.c;
-
-        const double right_x =
-            detection.right_curve.a * y * y +
-            detection.right_curve.b * y +
-            detection.right_curve.c;
-
-        const double lane_width = right_x - left_x;
-
-        if (lane_width < 170.0 || lane_width > 450.0) {
-            return false;
-        }
-    }
-
     return std::abs(
-        current_lane_width - previous_lane_width
+        current_lane_width -
+        previous_lane_width
     ) <= config_.maximum_lane_width_change_px;
 }
 

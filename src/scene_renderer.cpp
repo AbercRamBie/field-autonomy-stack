@@ -44,7 +44,7 @@ cv::Mat SceneRenderer::render(
         static_cast<double>(bottom_y - horizon_y);
 
     const double horizon_centre_x =
-        bottom_centre_x -
+        image_centre_x -
         std::tan(state.heading_error_rad) * perspective_height;
 
     const double bottom_half_width =

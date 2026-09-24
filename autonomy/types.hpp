@@ -26,6 +26,10 @@ struct LaneObservation {
     bool left_detected{false};
     bool right_detected{false};
 
+    // True only when LaneTracker accepts the current frame.
+    // False for held or invalid tracker observations.
+    bool fresh{false};
+
     double lateral_error_m{0.0};
     double heading_error_rad{0.0};
     double confidence{0.0};

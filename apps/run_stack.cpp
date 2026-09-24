@@ -7,16 +7,113 @@
 #include "autonomy/track.hpp"
 #include "autonomy/types.hpp"
 #include "autonomy/vehicle_model.hpp"
+#include "autonomy/q_learning_controller.hpp"
 
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+
 
 #include <cstddef>
 #include <filesystem>
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <algorithm>
+#include <iomanip>
+#include <sstream>
+#include <string>
 
-int main() {
+namespace {
+
+enum class ControllerType {
+    Stanley,
+    ResidualQ
+};
+
+std::string formatValue(const double value) {
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(3) << value;
+    return stream.str();
+}
+
+void drawControllerStatus(
+    cv::Mat& frame,
+    const ControllerType controller_type,
+    const autonomy::VehicleState& state,
+    const autonomy::AutonomyMode mode,
+    const double stanley_steering_rad,
+    const double residual_rad,
+    const double requested_steering_rad,
+    const double applied_steering_rad
+) {
+    cv::rectangle(
+        frame,
+        cv::Rect(0, 0, frame.cols, 142),
+        cv::Scalar(0, 0, 0),
+        cv::FILLED
+    );
+
+    const std::string controller_name =
+        controller_type == ControllerType::Stanley
+            ? "STANLEY"
+            : "RESIDUAL Q-LEARNING";
+
+    const std::string lines[]{
+        "Controller: " + controller_name,
+        "Mode: " + autonomy::toString(mode),
+        "Lateral error: " +
+            formatValue(state.lateral_error_m) + " m",
+        "Stanley: " +
+            formatValue(stanley_steering_rad) +
+            "  RL residual: " +
+            formatValue(residual_rad),
+        "Requested: " +
+            formatValue(requested_steering_rad) +
+            "  Applied: " +
+            formatValue(applied_steering_rad)
+    };
+
+    for (std::size_t index = 0; index < 5; ++index) {
+        cv::putText(
+            frame,
+            lines[index],
+            {12, 24 + static_cast<int>(index) * 27},
+            cv::FONT_HERSHEY_SIMPLEX,
+            0.55,
+            cv::Scalar(255, 255, 255),
+            1,
+            cv::LINE_AA
+        );
+    }
+}
+
+}  // namespace
+
+
+int main(int argc, char** argv) {
+
+    ControllerType controller_type = ControllerType::Stanley;
+
+    if(argc == 2){
+        const std::string argument = argv[1];
+
+        if (argument == "stanley") {
+            controller_type = ControllerType::Stanley;
+        } else if (argument == "residual_q") {
+            controller_type = ControllerType::ResidualQ;
+        } else {
+            std::cerr
+                << "Usage: run_stack "
+                << "[stanley|residual_q]\n";
+            return 1;
+        }
+    } else if (argc > 2) {
+        std::cerr
+            << "Usage: run_stack "
+            << "[stanley|residual_q]\n";
+        return 1;
+    }
+
     constexpr double dt_s = 0.05;
     constexpr std::size_t frame_count = 700;
 
@@ -25,8 +122,23 @@ int main() {
     autonomy::Track track;
     autonomy::VehicleModel vehicle;
     autonomy::SceneRenderer renderer;
-    autonomy::LaneDetector lane_detector;
-    autonomy::StanleyController controller;
+    autonomy::LaneDetector lane_detector(
+        75.0,
+        300,
+        autonomy::LaneDetectorProfile::Synthetic
+    );
+    autonomy::StanleyController stanley_controller;
+    autonomy::QLearningController q_controller(
+         0.10,
+         0.98,
+         0.0,
+         42
+    );
+
+    if (controller_type == ControllerType::ResidualQ) {
+        q_controller.load("models/q_table.txt");
+    }
+
     autonomy::FaultInjector fault_injector(dt_s, 42);
     autonomy::HealthMonitor health_monitor;
     autonomy::CsvLogger logger("logs/latest.csv");
@@ -37,6 +149,8 @@ int main() {
     initial_state.speed_mps = 8.0;
 
     vehicle.reset(initial_state);
+
+    double previous_steering_rad = 0.0;
 
     for (std::size_t frame_index = 0;
          frame_index < frame_count;
@@ -96,11 +210,49 @@ int main() {
         }
 
         autonomy::ControlCommand command =
-            controller.calculate(
+            stanley_controller.calculate(
                 observation,
                 true_state.speed_mps,
                 target_speed_mps
             );
+
+        const double stanley_steering_rad =
+            command.requested_steering_rad;
+
+        double learned_residual_rad = 0.0;
+
+        const bool learning_allowed  = 
+            controller_type == ControllerType::ResidualQ &&
+            mode == autonomy::AutonomyMode::Normal &&
+            observation.valid &&
+            observation.confidence >= 0.70;
+
+        if (learning_allowed) {
+            const std::size_t state_index =
+                q_controller.stateIndex(
+                    observation,
+                    previous_steering_rad
+                );
+
+            const std::size_t action_index =
+                q_controller.selectAction(
+                    state_index,
+                    false
+                );
+
+            learned_residual_rad =
+                q_controller.residualForAction(
+                    action_index
+                );
+
+            command.requested_steering_rad =
+                std::clamp(
+                    stanley_steering_rad +
+                        learned_residual_rad,
+                    -0.45,
+                    0.45
+                );
+        }
 
         command.applied_steering_rad =
             fault_injector.applySteeringFault(
@@ -113,6 +265,9 @@ int main() {
             curvature,
             dt_s
         );
+
+        previous_steering_rad =
+            command.applied_steering_rad;
 
         autonomy::TelemetryRecord record;
         record.frame_index = frame_index;
@@ -138,6 +293,17 @@ int main() {
             << " steering="
             << command.applied_steering_rad
             << '\n';
+
+        drawControllerStatus(
+            debug_frame,
+            controller_type,
+            true_state,
+            mode,
+            stanley_steering_rad,
+            learned_residual_rad,
+            command.requested_steering_rad,
+            command.applied_steering_rad
+        );
 
         cv::imshow("Field autonomy stack", debug_frame);
 

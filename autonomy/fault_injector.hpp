@@ -1,7 +1,6 @@
 #pragma once
 
 #include "autonomy/types.hpp"
-
 #include <cstddef>
 #include <deque>
 #include <random>

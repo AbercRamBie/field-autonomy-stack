@@ -6,7 +6,11 @@
 
 TEST(LaneDetectorTest, DetectsCleanSyntheticLane) {
     autonomy::SceneRenderer renderer;
-    autonomy::LaneDetector detector;
+    autonomy::LaneDetector detector(
+        75.0,
+        300,
+        autonomy::LaneDetectorProfile::Synthetic
+    );
 
     autonomy::VehicleState state;
     state.lateral_error_m = 0.4;
@@ -28,4 +32,20 @@ TEST(LaneDetectorTest, DetectsCleanSyntheticLane) {
     EXPECT_TRUE(observation.left_detected);
     EXPECT_TRUE(observation.right_detected);
     EXPECT_GT(observation.confidence, 0.7);
+
+    EXPECT_NEAR(
+        observation.lateral_error_m,
+        state.lateral_error_m,
+        0.15
+        );
+
+    EXPECT_LT(
+        observation.left_bottom_x,
+        observation.right_bottom_x
+         );
+
+    EXPECT_LT(
+        observation.left_lookahead_x,
+        observation.right_lookahead_x
+        );
 }

@@ -11,3 +11,6 @@
 *.csv
 __pycache__/
 *.py[cod]
+
+/data/processed/
+/artifacts/

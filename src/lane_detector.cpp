@@ -1,5 +1,4 @@
 #include "autonomy/lane_detector.hpp"
-
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
 
@@ -39,7 +38,8 @@ struct SlidingWindowResult {
 };
 
 std::vector<cv::Point2f> createSourcePoints(
-    const cv::Size& image_size
+    const cv::Size& image_size,
+    const LaneDetectorProfile profile
 ) {
     const float scale_x =
         static_cast<float>(image_size.width) /
@@ -49,12 +49,62 @@ std::vector<cv::Point2f> createSourcePoints(
         static_cast<float>(image_size.height) /
         static_cast<float>(kExpectedFrameHeight);
 
+    if(profile == LaneDetectorProfile::Synthetic){
+
+        return {
+            {302.0F * scale_x, 150.0F * scale_y},
+            {338.0F * scale_x, 150.0F * scale_y},
+            {189.0F * scale_x, 479.0F * scale_y},
+            {451.0F * scale_x, 479.0F * scale_y}
+        };
+    }
+
+
+    /*
+    * Calibration for the included recorded-video camera.
+    */
     return {
         {312.0F * scale_x, 335.0F * scale_y},
         {328.0F * scale_x, 335.0F * scale_y},
         {158.0F * scale_x, 479.0F * scale_y},
         {425.0F * scale_x, 479.0F * scale_y}
     };
+
+}
+
+std::vector<cv::Point2f> createRoiPoints(
+    const cv::Size& image_size,
+    const LaneDetectorProfile profile
+) {
+    const float scale_x =
+        static_cast<float>(image_size.width) /
+        static_cast<float>(kExpectedFrameWidth);
+
+    const float scale_y =
+        static_cast<float>(image_size.height) /
+        static_cast<float>(kExpectedFrameHeight);
+
+    if (profile == LaneDetectorProfile::Synthetic) {
+        /*
+         * Wider than the nominal synthetic lane so boundaries
+         * remain visible during lateral and heading errors.
+         */
+        return {
+            {220.0F * scale_x, 140.0F * scale_y},
+            {420.0F * scale_x, 140.0F * scale_y},
+            {80.0F * scale_x, 479.0F * scale_y},
+            {560.0F * scale_x, 479.0F * scale_y}
+        };
+    }
+
+    /*
+     * Initially retain the calibrated video trapezoid.
+     * We will tune its ROI independently using video evidence.
+     */
+    return createSourcePoints(
+        image_size,
+        profile
+    );
 }
 
 std::vector<cv::Point2f> createDestinationPoints(
@@ -133,6 +183,35 @@ cv::Mat gradientBinary(
     );
 
     return binary;
+}
+
+Polynomial averagePolynomialHistory(
+    const std::deque<LanePolynomial>& history
+) {
+    Polynomial average;
+
+    if (history.empty()) {
+        return average;
+    }
+
+    for (const LanePolynomial& curve : history) {
+        average.a += curve.a;
+        average.b += curve.b;
+        average.c += curve.c;
+    }
+
+    const double count =
+        static_cast<double>(history.size());
+
+    average.a /= count;
+    average.b /= count;
+    average.c /= count;
+    average.valid =
+        std::isfinite(average.a) &&
+        std::isfinite(average.b) &&
+        std::isfinite(average.c);
+
+    return average;
 }
 
 Polynomial fitPolynomial(
@@ -222,8 +301,8 @@ SlidingWindowResult findLanePixels(
     }
 
     constexpr int number_of_windows = 9;
-    constexpr int margin_px = 40;
-    constexpr int minimum_pixels_to_recenter = 40;
+    constexpr int margin_px = 75;
+    constexpr int minimum_pixels_to_recenter = 1;
     constexpr std::size_t minimum_lane_pixels = 100;
 
     const int width = binary.cols;
@@ -306,8 +385,6 @@ SlidingWindowResult findLanePixels(
 
     const int window_height =
         height / number_of_windows;
-    const int minimum_search_y =
-        static_cast<int>(0.45 * static_cast<double>(height));
 
     for (
         int window = 0;
@@ -318,14 +395,7 @@ SlidingWindowResult findLanePixels(
             height - window * window_height;
 
         const int y_low =
-            std::max(
-                minimum_search_y,
-                height - (window + 1) * window_height
-            );
-
-        if (y_high <= minimum_search_y) {
-            break;
-        }
+            height - (window + 1) * window_height;
 
         const int left_x_low =
             current_left_x - margin_px;
@@ -745,10 +815,12 @@ cv::Mat createLaneOverlay(
 
 LaneDetector::LaneDetector(
     const double pixels_per_metre,
-    const int horizon_y_px
+    const int horizon_y_px,
+    const LaneDetectorProfile profile
 )
     : pixels_per_metre_(pixels_per_metre),
-      horizon_y_px_(horizon_y_px) {
+      horizon_y_px_(horizon_y_px),
+      profile_(profile) {
     if (
         pixels_per_metre_ <= 0.0 ||
         horizon_y_px_ <= 0
@@ -764,7 +836,7 @@ LaneDetector::LaneDetector(
     };
 
     const std::vector<cv::Point2f> source_points =
-        createSourcePoints(expected_size);
+        createSourcePoints(expected_size, profile_);
 
     const std::vector<cv::Point2f> destination_points =
         createDestinationPoints(expected_size);
@@ -785,16 +857,16 @@ LaneDetector::LaneDetector(
 }
 
 cv::Mat LaneDetector::createBinaryImage(
-    const cv::Mat& warped_frame
+    const cv::Mat& frame
 ) const {
-    if (warped_frame.empty()) {
+    if (frame.empty()) {
         return {};
     }
 
     cv::Mat hls;
 
     cv::cvtColor(
-        warped_frame,
+        frame,
         hls,
         cv::COLOR_BGR2HLS
     );
@@ -809,14 +881,24 @@ cv::Mat LaneDetector::createBinaryImage(
     const cv::Mat lightness_binary =
         gradientBinary(
             channels[1],
-            30.0
+            15.0
         );
 
-    const cv::Mat saturation_binary =
-        gradientBinary(
-            channels[2],
-            25.0
-        );
+    cv::Mat saturation_binary;
+    cv::inRange(
+        channels[2],
+        cv::Scalar(100),
+        cv::Scalar(255),
+        saturation_binary
+    );
+
+    cv::Mat white_binary;
+    cv::inRange(
+        channels[1],
+        cv::Scalar(200),
+        cv::Scalar(255),
+        white_binary
+    );
 
     cv::Mat binary;
 
@@ -826,14 +908,10 @@ cv::Mat LaneDetector::createBinaryImage(
         binary
     );
 
-    cv::morphologyEx(
+    cv::bitwise_or(
         binary,
-        binary,
-        cv::MORPH_CLOSE,
-        cv::getStructuringElement(
-            cv::MORPH_RECT,
-            cv::Size(3, 5)
-        )
+        white_binary,
+        binary
     );
 
     return binary;
@@ -875,6 +953,16 @@ LaneObservation LaneDetector::detect(
         return result;
     };
 
+    auto record_missed_detection = [&]() {
+        constexpr int history_reset_frames = 10;
+
+        ++missed_detection_frames_;
+        if (missed_detection_frames_ >= history_reset_frames) {
+            left_curve_history_.clear();
+            right_curve_history_.clear();
+        }
+    };
+
     cv::Mat perspective_matrix;
     cv::Mat inverse_perspective_matrix;
 
@@ -890,7 +978,7 @@ LaneObservation LaneDetector::detect(
             inverse_perspective_transform_;
     } else {
         const std::vector<cv::Point2f> source_points =
-            createSourcePoints(frame.size());
+            createSourcePoints(frame.size(), profile_);
 
         const std::vector<cv::Point2f> destination_points =
             createDestinationPoints(frame.size());
@@ -909,12 +997,75 @@ LaneObservation LaneDetector::detect(
     }
 
     /*
-     * Step 1: Perspective warp.
+     * Step 1: Create the HLS/Sobel mask in camera space. The
+     * reference implementation thresholds before warping.
+     */
+    const cv::Mat camera_binary =
+        createBinaryImage(frame);
+
+    if (camera_binary.empty()) {
+        return finish(
+            observation,
+            frame
+        );
+    }
+
+    const std::vector<cv::Point2f> roi_source_points =
+        createRoiPoints(frame.size(), profile_);
+
+    const auto toPoint = [](
+        const cv::Point2f& point
+    ) {
+        return cv::Point{
+            cvRound(point.x),
+            cvRound(point.y)
+        };
+    };
+
+    const std::vector<cv::Point> roi_polygon{
+        toPoint(roi_source_points[0]),
+        toPoint(roi_source_points[1]),
+        toPoint(roi_source_points[3]),
+        toPoint(roi_source_points[2])
+    };
+
+    cv::Mat roi_mask = cv::Mat::zeros(
+        frame.size(),
+        CV_8UC1
+    );
+
+    cv::fillConvexPoly(
+        roi_mask,
+        roi_polygon,
+        cv::Scalar(255),
+        cv::LINE_AA
+    );
+
+    cv::Mat masked_camera_binary;
+
+    cv::bitwise_and(
+        camera_binary,
+        roi_mask,
+        masked_camera_binary
+    );
+
+    cv::Mat masked_frame = cv::Mat::zeros(
+        frame.size(),
+        frame.type()
+    );
+
+    frame.copyTo(
+        masked_frame,
+        roi_mask
+    );
+
+    /*
+     * Step 2: Warp both the display frame and binary mask.
      */
     cv::Mat warped;
 
     cv::warpPerspective(
-        frame,
+        masked_frame,
         warped,
         perspective_matrix,
         frame.size(),
@@ -928,22 +1079,22 @@ LaneObservation LaneDetector::detect(
         );
     }
 
-    cv::imshow("1 - Warped", warped);
-
-    /*
-     * Step 2: HLS/Sobel binary image.
-     */
-    const cv::Mat binary =
-        createBinaryImage(warped);
-
-    if (binary.empty()) {
-        return finish(
-            observation,
-            frame
-        );
+    if (debug_frame != nullptr) {
+        cv::imshow("1 - Warped", warped);
     }
 
-    cv::imshow("2 - Binary", binary);
+    cv::Mat binary;
+    cv::warpPerspective(
+        masked_camera_binary,
+        binary,
+        perspective_matrix,
+        frame.size(),
+        cv::INTER_NEAREST
+    );
+
+    if (debug_frame != nullptr) {
+        cv::imshow("2 - Binary", binary);
+    }
 
     /*
      * Step 3: Histogram and sliding-window search.
@@ -962,12 +1113,16 @@ LaneObservation LaneDetector::detect(
             &sliding_window_debug
         );
 
-    cv::imshow(
-        "3 - Sliding windows",
-        sliding_window_debug
-    );
+    if (debug_frame != nullptr) {
+        cv::imshow(
+            "3 - Sliding windows",
+            sliding_window_debug
+        );
+    }
 
     if (!lane_pixels.valid) {
+        record_missed_detection();
+
         return finish(
             observation,
             frame
@@ -977,32 +1132,78 @@ LaneObservation LaneDetector::detect(
     /*
      * Step 4: Fit quadratic lane curves.
      */
-    Polynomial left_curve =
+    const Polynomial measured_left_curve =
         fitPolynomial(
             lane_pixels.left_pixels
         );
 
-    Polynomial right_curve =
+    const Polynomial measured_right_curve =
         fitPolynomial(
             lane_pixels.right_pixels
         );
 
     observation.left_detected =
-        left_curve.valid;
+        measured_left_curve.valid;
 
     observation.right_detected =
-        right_curve.valid;
+        measured_right_curve.valid;
 
     /*
      * Step 5: Validate the detected lane geometry.
      */
-    const bool fresh_detection = validateLane(
-        left_curve,
-        right_curve,
-        binary.size()
+    if (!measured_left_curve.valid ||
+        !measured_right_curve.valid) {
+        record_missed_detection();
+
+        return finish(
+            observation,
+            frame
+        );
+    }
+
+    missed_detection_frames_ = 0;
+
+    constexpr std::size_t history_length = 10;
+
+    left_curve_history_.push_back(
+        LanePolynomial{
+            measured_left_curve.a,
+            measured_left_curve.b,
+            measured_left_curve.c
+        }
+    );
+    right_curve_history_.push_back(
+        LanePolynomial{
+            measured_right_curve.a,
+            measured_right_curve.b,
+            measured_right_curve.c
+        }
     );
 
-    if (!fresh_detection) {
+    while (left_curve_history_.size() > history_length) {
+        left_curve_history_.pop_front();
+    }
+    while (right_curve_history_.size() > history_length) {
+        right_curve_history_.pop_front();
+    }
+
+    const Polynomial left_curve =
+        averagePolynomialHistory(left_curve_history_);
+    const Polynomial right_curve =
+        averagePolynomialHistory(right_curve_history_);
+
+    const bool lane_geometry_valid =
+        validateLane(
+            left_curve,
+            right_curve,
+            binary.size()
+        );
+
+    if (!lane_geometry_valid) {
+        left_curve_history_.pop_back();
+        right_curve_history_.pop_back();
+        record_missed_detection();
+
         return finish(
             observation,
             frame

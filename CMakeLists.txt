@@ -53,6 +53,17 @@ target_link_libraries(run_stack PRIVATE autonomy)
 add_executable(run_video apps/run_video.cpp)
 target_link_libraries(run_video PRIVATE autonomy)
 
+add_executable(
+    extract_observations
+    apps/extract_observations.cpp
+)
+
+target_link_libraries(
+    extract_observations
+    PRIVATE
+        autonomy
+)
+
 add_executable(replay_controller apps/replay_controller.cpp)
 target_link_libraries(replay_controller PRIVATE autonomy)
 
@@ -74,7 +85,7 @@ if(BUILD_TESTING)
     FetchContent_MakeAvailable(googletest)
 
     add_executable(autonomy_tests
-        tests/vehicle_model_test.cpp
+        tests/vehicle_model_tests.cpp
         tests/controller_test.cpp
         tests/detector_test.cpp
         tests/replay_test.cpp

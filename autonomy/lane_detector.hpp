@@ -4,13 +4,21 @@
 
 #include <opencv2/core.hpp>
 
+#include <deque>
+
 namespace autonomy {
+
+enum class LaneDetectorProfile{
+    Synthetic,
+    RecordedVideo
+};
 
 class LaneDetector {
 public:
     LaneDetector(
         double pixels_per_metre = 75.0,
-        int horizon_y_px = 300
+        int horizon_y_px = 300,
+        LaneDetectorProfile profile = LaneDetectorProfile::RecordedVideo
     );
 
     [[nodiscard]] LaneObservation detect(
@@ -30,6 +38,12 @@ private:
     cv::Mat inverse_perspective_transform_;
 
     bool perspective_initialized_{false};
+
+    std::deque<LanePolynomial> left_curve_history_;
+    std::deque<LanePolynomial> right_curve_history_;
+    int missed_detection_frames_{0};
+
+    LaneDetectorProfile profile_;
 };
 
 }  // namespace autonomy
