@@ -81,8 +81,6 @@ def require_file(path: Path, description: str) -> None:
 
 
 def run_stage(name: str, command: list[str]) -> None:
-    print(f"\n[{name}]")
-    print(shlex.join(command))
 
     try:
         subprocess.run(command, check=True)
@@ -190,13 +188,6 @@ def main() -> None:
             "Pipeline finished, but these outputs are missing or empty:\n"
             f"{formatted}"
         )
-
-    print("\nSegment processing completed successfully.")
-    print(f"Observations: {observations_path}")
-    print(f"Aligned data: {aligned_path}")
-    print(f"BC samples:   {samples_path}")
-    print(f"Manifest:     {manifest_path}")
-
 
 if __name__ == "__main__":
     main()

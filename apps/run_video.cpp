@@ -3,11 +3,9 @@
 #include "autonomy/lane_tracker.hpp"
 #include "autonomy/stanley_controller.hpp"
 #include "autonomy/types.hpp"
-
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -401,26 +399,6 @@ int main(int argc, char** argv) {
             debug_frame
         );
 
-        if (frame_index % 30 == 0) {
-            std::cout
-                << "frame=" << frame_index
-                << " mode="
-                << autonomy::toString(mode)
-                << " raw_valid="
-                << raw_observation.valid
-                << " valid="
-                << observation.valid
-                << " confidence="
-                << observation.confidence
-                << " lateral_error="
-                << observation.lateral_error_m
-                << " heading_error="
-                << observation.heading_error_rad
-                << " steering="
-                << command.requested_steering_rad
-                << '\n';
-        }
-
         last_debug_frame = debug_frame.clone();
         last_observation = observation;
         last_mode = mode;
@@ -477,10 +455,6 @@ int main(int argc, char** argv) {
             last_debug_frame
         );
 
-        std::cout
-            << "End of video. Press q or Escape "
-            << "to close the windows.\n";
-
         while (!isMainWindowClosed()) {
             const int key = cv::waitKey(30);
 
@@ -500,19 +474,6 @@ int main(int argc, char** argv) {
                 static_cast<double>(
                     frame_index
                 );
-
-    std::cout
-        << "Processed frames: "
-        << frame_index
-        << '\n'
-        << "Valid lane observations: "
-        << valid_observations
-        << " ("
-        << formatValue(
-            valid_percentage,
-            1
-        )
-        << "%)\n";
 
     cv::destroyAllWindows();
 

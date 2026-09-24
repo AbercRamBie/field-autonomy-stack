@@ -147,7 +147,6 @@ def parse_float(row: dict[str, str], name: str) -> float:
 def format_float(value: float) -> str:
     return format(value, ".17g")
 
-
 def read_rows(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
         raise FileNotFoundError(
@@ -585,41 +584,6 @@ def build_dataset(args: argparse.Namespace) -> None:
         )
         + "\n"
     )
-
-    print(f"Input rows: {len(rows)}")
-    print(f"BC samples written: {len(samples)}")
-    print("Rejected rows:")
-
-    for reason, count in sorted(rejected.items()):
-        print(f"  {reason}: {count}")
-
-    for name, values in (
-        ("front-wheel action", front_actions),
-        ("Stanley action", stanley_actions),
-        ("residual action", residual_actions),
-    ):
-        print(f"{name} rad:")
-        print(
-            "  "
-            f"min={float(np.min(values)):.6f} "
-            f"p01={float(np.percentile(values, 1)):.6f} "
-            f"p50={float(np.percentile(values, 50)):.6f} "
-            f"p99={float(np.percentile(values, 99)):.6f} "
-            f"max={float(np.max(values)):.6f}"
-        )
-
-    residual_over_limit = np.mean(
-        np.abs(residual_actions) > 0.05
-    )
-
-    print(
-        "Residual actions outside ±0.05 rad: "
-        f"{100.0 * residual_over_limit:.2f}%"
-    )
-
-    print(f"Output: {args.output}")
-    print(f"Manifest: {manifest_path}")
-
 
 def main() -> None:
     args = parse_args()

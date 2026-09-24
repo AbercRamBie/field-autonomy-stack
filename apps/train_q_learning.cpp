@@ -3,7 +3,6 @@
 #include "autonomy/track.hpp"
 #include "autonomy/types.hpp"
 #include "autonomy/vehicle_model.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -20,13 +19,11 @@ constexpr double kDtS = 0.05;
 constexpr double kTargetSpeedMps = 8.0;
 constexpr double kLaneDepartureM = 1.75;
 constexpr double kMaximumSteeringRad = 0.45;
-
 constexpr std::size_t kEpisodeCount = 3000;
 constexpr std::size_t kStepsPerEpisode = 400;
 
-autonomy::LaneObservation makeObservation(
-    const autonomy::VehicleState& state
-) {
+autonomy::LaneObservation makeObservation(const autonomy::VehicleState& state) 
+{
     autonomy::LaneObservation observation;
 
     observation.valid = true;
@@ -40,11 +37,8 @@ autonomy::LaneObservation makeObservation(
     return observation;
 }
 
-double calculateReward(
-    const autonomy::VehicleState& next_state,
-    const double steering_rad,
-    const double previous_steering_rad
-) {
+double calculateReward(const autonomy::VehicleState& next_state,const double steering_rad,const double previous_steering_rad) 
+{
     const double normalized_lane_error =
         next_state.lateral_error_m /
         kLaneDepartureM;
@@ -277,39 +271,9 @@ int main() {
             << q_controller.epsilon() << ','
             << static_cast<int>(lane_departure)
             << '\n';
-
-        if (
-            episode == 0 ||
-            (episode + 1) % 100 == 0
-        ) {
-            std::cout
-                << "Episode "
-                << episode + 1
-                << '/'
-                << kEpisodeCount
-                << " steps="
-                << completed_steps
-                << " return="
-                << std::fixed
-                << std::setprecision(2)
-                << episode_return
-                << " mean_error="
-                << mean_absolute_error
-                << " epsilon="
-                << q_controller.epsilon()
-                << " departed="
-                << (lane_departure ? "yes" : "no")
-                << '\n';
-        }
     }
 
     q_controller.save("models/q_table.txt");
-
-    std::cout
-        << "Training complete\n"
-        << "Q-table: models/q_table.txt\n"
-        << "Training log: "
-        << "logs/q_learning_training.csv\n";
 
     return 0;
 }

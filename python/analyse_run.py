@@ -2,10 +2,8 @@
 
 from pathlib import Path
 import argparse
-
 import matplotlib.pyplot as plt
 import pandas as pd
-
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -28,47 +26,15 @@ def main() -> None:
         data["true_lateral_error_m"].abs()
     )
 
-    print(f"Frames: {len(data)}")
-
-    print(
-        "Mean absolute lateral error: "
-        f"{absolute_error.mean():.3f} m"
-    )
-
-    print(
-        "95th percentile lateral error: "
-        f"{absolute_error.quantile(0.95):.3f} m"
-    )
-
-    print(
-        "Maximum lateral error: "
-        f"{absolute_error.max():.3f} m"
-    )
-
-    print(
-        "Mean perception latency: "
-        f"{data['processing_time_ms'].mean():.3f} ms"
-    )
-
     departure_threshold_m = 1.75
 
     departure_frames = (
         absolute_error > departure_threshold_m
     ).sum()
 
-    print(
-        f"Lane-departure frames: "
-        f"{departure_frames}"
-    )
-
     safe_stop_frames = (
         data["mode"] == "SAFE_STOP"
     ).sum()
-
-    print(
-        f"Safe-stop frames: "
-        f"{safe_stop_frames}"
-    )
 
     plt.figure(figsize=(10, 5))
 
@@ -117,49 +83,39 @@ def main() -> None:
         data["requested_steering_rad"],
         label="Requested steering",
     )
-
     plt.plot(
         data["time_s"],
         data["applied_steering_rad"],
         label="Applied steering",
         alpha=0.7,
     )
-
     plt.xlabel("Time (s)")
     plt.ylabel("Steering angle (rad)")
     plt.title("Controller commands")
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-
     plt.savefig(
         args.output_dir / "steering.png",
         dpi=160,
     )
-
     plt.close()
-
     plt.figure(figsize=(10, 5))
-
     plt.plot(
         data["time_s"],
         data["confidence"],
     )
-
     plt.xlabel("Time (s)")
     plt.ylabel("Perception confidence")
     plt.title("Lane-detection confidence")
     plt.ylim(-0.05, 1.05)
     plt.grid(True)
     plt.tight_layout()
-
     plt.savefig(
         args.output_dir / "confidence.png",
         dpi=160,
     )
-
     plt.close()
-
 
 if __name__ == "__main__":
     main()

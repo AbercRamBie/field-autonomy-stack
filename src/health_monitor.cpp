@@ -45,15 +45,6 @@ AutonomyMode HealthMonitor::update(
         }
     }
 
-    if (mode_ != previous_mode) {
-        std::cout
-            << "[HEALTH] "
-            << toString(previous_mode)
-            << " -> "
-            << toString(mode_)
-            << '\n';
-    }
-
     return mode_;
 }
 

@@ -145,19 +145,5 @@ def main() -> None:
 
     relation = "same" if best_correlation > 0.0 else "opposite"
 
-    print(f"Best lag: {best_lag_ms} ms")
-    print(f"Correlation: {best_correlation:.6f}")
-    print(f"Samples: {sample_count}")
-    print(f"Steering/yaw sign relation: {relation}")
-    print("Top lag candidates:")
-
-    for _, lag_ms, correlation, count in results[:10]:
-        print(
-            f"  lag_ms={lag_ms:4d} "
-            f"correlation={correlation:+.6f} "
-            f"samples={count}"
-        )
-
-
 if __name__ == "__main__":
     main()

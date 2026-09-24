@@ -8,11 +8,8 @@
 #include "autonomy/types.hpp"
 #include "autonomy/vehicle_model.hpp"
 #include "autonomy/q_learning_controller.hpp"
-
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-
-
 #include <cstddef>
 #include <filesystem>
 #include <iostream>
@@ -280,19 +277,6 @@ int main(int argc, char** argv) {
         record.faults = faults;
 
         logger.write(record);
-
-        std::cout
-            << "frame=" << frame_index
-            << " mode=" << autonomy::toString(mode)
-            << " true_error="
-            << true_state.lateral_error_m
-            << " measured_error="
-            << observation.lateral_error_m
-            << " confidence="
-            << observation.confidence
-            << " steering="
-            << command.applied_steering_rad
-            << '\n';
 
         drawControllerStatus(
             debug_frame,

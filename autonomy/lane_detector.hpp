@@ -1,9 +1,6 @@
 #pragma once
-
 #include "autonomy/types.hpp"
-
 #include <opencv2/core.hpp>
-
 #include <deque>
 
 namespace autonomy {

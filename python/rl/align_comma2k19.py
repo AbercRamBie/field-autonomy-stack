@@ -272,25 +272,6 @@ def align(
             writer.writerow(output_row)
 
     valid_skew = can_bracketed
-    print(f"Rows written: {len(rows)}")
-    print(f"CAN-bracketed rows: {int(np.sum(can_bracketed))}")
-    print(f"Unbracketed rows: {int(np.sum(~can_bracketed))}")
-    print(
-        "Steering nearest-skew ms "
-        f"p50={percentile(steering_skew_ms[valid_skew], 50):.3f} "
-        f"p95={percentile(steering_skew_ms[valid_skew], 95):.3f} "
-        f"p99={percentile(steering_skew_ms[valid_skew], 99):.3f} "
-        f"max={float(np.max(steering_skew_ms[valid_skew])):.3f}"
-    )
-    print(
-        "Speed nearest-skew ms "
-        f"p50={percentile(speed_skew_ms[valid_skew], 50):.3f} "
-        f"p95={percentile(speed_skew_ms[valid_skew], 95):.3f} "
-        f"p99={percentile(speed_skew_ms[valid_skew], 99):.3f} "
-        f"max={float(np.max(speed_skew_ms[valid_skew])):.3f}"
-    )
-    print(f"Output: {output_path}")
-
 
 def main() -> None:
     args = parse_args()

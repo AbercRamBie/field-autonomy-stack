@@ -15,6 +15,27 @@ find_package(OpenCV REQUIRED COMPONENTS
     calib3d
 )
 
+function(enable_project_warnings target_name)
+    if(MSVC)
+        target_compile_options(
+            ${target_name}
+            PRIVATE
+                /W4
+                /permissive-
+        )
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(
+            ${target_name}
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+                -Wconversion
+                -Wshadow
+        )
+    endif()
+endfunction()
+
 add_library(autonomy
     src/track.cpp
     src/vehicle_model.cpp
@@ -38,20 +59,15 @@ target_link_libraries(autonomy
         ${OpenCV_LIBS}
 )
 
-target_compile_options(autonomy
-    PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Wconversion
-        -Wshadow
-)
+enable_project_warnings(autonomy)
 
 add_executable(run_stack apps/run_stack.cpp)
 target_link_libraries(run_stack PRIVATE autonomy)
+enable_project_warnings(run_stack)
 
 add_executable(run_video apps/run_video.cpp)
 target_link_libraries(run_video PRIVATE autonomy)
+enable_project_warnings(run_video)
 
 add_executable(
     extract_observations
@@ -64,11 +80,33 @@ target_link_libraries(
         autonomy
 )
 
-add_executable(replay_controller apps/replay_controller.cpp)
-target_link_libraries(replay_controller PRIVATE autonomy)
+enable_project_warnings(extract_observations)
 
-add_executable(train_q_learning apps/train_q_learning.cpp)
-target_link_libraries(train_q_learning PRIVATE autonomy)
+add_executable(
+    replay_controller
+    apps/replay_controller.cpp
+)
+
+target_link_libraries(
+    replay_controller
+    PRIVATE
+        autonomy
+)
+
+enable_project_warnings(replay_controller)
+
+add_executable(
+    train_q_learning
+    apps/train_q_learning.cpp
+)
+
+target_link_libraries(
+    train_q_learning
+    PRIVATE
+        autonomy
+)
+
+enable_project_warnings(train_q_learning)
 
 include(CTest)
 
@@ -96,6 +134,7 @@ if(BUILD_TESTING)
             autonomy
             GTest::gtest_main
     )
+    enable_project_warnings(autonomy_tests)
 
     include(GoogleTest)
     gtest_discover_tests(autonomy_tests)

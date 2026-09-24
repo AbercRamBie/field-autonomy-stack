@@ -101,28 +101,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout
-        << "Replayed frames: "
-        << replayed_frames
-        << '\n';
-
-    std::cout
-        << "Matched commands: "
-        << matched_commands
-        << '\n';
-
-    std::cout
-        << "Maximum steering difference: "
-        << maximum_difference
-        << " rad\n";
-
     const bool passed =
-        replayed_frames == matched_commands;
-
-    std::cout
-        << "Replay result: "
-        << (passed ? "PASS" : "FAIL")
-        << '\n';
+        replayed_frames > 0 &&
+        replayed_frames == matched_commands &&
+        maximum_difference <= tolerance;
 
     return passed ? 0 : 2;
 }

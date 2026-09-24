@@ -72,31 +72,6 @@ def calculate_metrics(rows: list[dict[str, str]]) -> dict[str, float]:
         "lane_departure_frames": float(lane_departure_frames),
     }
 
-
-def print_comparison(
-    stanley: dict[str, float],
-    residual_q: dict[str, float],
-) -> None:
-    print(
-        f"{'Metric':<30}"
-        f"{'Stanley':>14}"
-        f"{'Residual Q':>14}"
-        f"{'Difference':>14}"
-    )
-
-    print("-" * 72)
-
-    for metric in stanley:
-        difference = residual_q[metric] - stanley[metric]
-
-        print(
-            f"{metric:<30}"
-            f"{stanley[metric]:>14.6f}"
-            f"{residual_q[metric]:>14.6f}"
-            f"{difference:>+14.6f}"
-        )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Compare Stanley and residual-Q telemetry."
@@ -123,12 +98,6 @@ def main() -> None:
     residual_q_metrics = calculate_metrics(
         load_rows(args.residual_q)
     )
-
-    print_comparison(
-        stanley_metrics,
-        residual_q_metrics,
-    )
-
 
 if __name__ == "__main__":
     main()
